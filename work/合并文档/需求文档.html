@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>合并文档｜需求说明</title>
+  <title>合并文档 V2｜需求说明</title>
   <style>
     :root{--ink:#153247;--muted:#68808f;--accent:#147d92;--soft:#edf6f8;--line:#d8e5ea;--card:#fff;--bg:#f4f8fa}
     *{box-sizing:border-box}
@@ -38,10 +38,10 @@
   <section class="hero">
     <div>
       <div class="eyebrow">WINDOWS DESKTOP UTILITY</div>
-      <h1>合并文档</h1>
+      <h1>合并文档 V2</h1>
       <p>把一个文件夹中的上百个旧版 .xls 明细，安全、可追踪地合并成一个标准工作簿。</p>
     </div>
-    <div class="stamp"><span>需求基线</span><b>Version 1.0</b><span>2026-10-09 · 已确认</span></div>
+    <div class="stamp"><span>交互修订</span><b>Version 2.0</b><span>2026-10-09 · 已确认</span></div>
   </section>
 
   <section class="grid">
@@ -55,8 +55,8 @@
     <h2>处理流程</h2>
     <div class="flow">
       <div class="step">拖入或选择文件夹</div><div class="arrow">→</div>
-      <div class="step">按文件名排序并校验</div><div class="arrow">→</div>
-      <div class="step">去汇总 · 合并 · 输出</div>
+      <div class="step">仅扫描并显示文件数量</div><div class="arrow">→</div>
+      <div class="step">点击“开始合并”后处理</div>
     </div>
   </section>
 
@@ -85,7 +85,8 @@
     <h2>界面交互</h2>
     <table>
       <tr><th>功能</th><th>行为</th><th>状态</th></tr>
-      <tr><td>文件夹拖放</td><td>放入后自动识别并开始处理</td><td class="ok">必需</td></tr>
+      <tr><td>文件夹拖放</td><td>放入后只扫描并显示数量，不自动合并</td><td class="ok">必需</td></tr>
+      <tr><td>开始合并</td><td>用户确认清单后点击，是唯一的合并入口</td><td class="ok">必需</td></tr>
       <tr><td>进度条</td><td>显示完成文件数与总数</td><td class="ok">必需</td></tr>
       <tr><td>取消</td><td>停止本次任务，不留下半成品</td><td class="ok">必需</td></tr>
       <tr><td>运行日志</td><td>显示成功、跳过、错误与输出路径，可清空</td><td class="ok">必需</td></tr>
@@ -108,4 +109,3 @@
 </main>
 </body>
 </html>
-

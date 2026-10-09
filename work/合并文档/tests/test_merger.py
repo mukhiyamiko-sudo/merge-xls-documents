@@ -4,11 +4,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 import xlrd
+from tkinterdnd2 import TkinterDnD
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app import MergeApp
 from merger import discover_files, merge_files, read_source
 
 
@@ -136,6 +139,31 @@ class MergerTests(unittest.TestCase):
             self.assertEqual("A", source.rows[0][1])
 
 
+class AppInteractionTests(unittest.TestCase):
+    def test_selecting_folder_only_scans_until_start_is_clicked(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            (folder / "claim_001.xls").write_bytes(b"sample")
+            (folder / "claim_002.xls").write_bytes(b"sample")
+            (folder / "合并结果_20261009_120000.xls").write_bytes(b"old")
+
+            root = TkinterDnD.Tk()
+            root.withdraw()
+            try:
+                app = MergeApp(root)
+                root.after = Mock()
+                app._start_merge = Mock()
+
+                app._set_folder(folder)
+
+                root.after.assert_not_called()
+                app._start_merge.assert_not_called()
+                self.assertEqual("0 / 2", app.count_var.get())
+                self.assertIn("已读取 2 个 Excel 文件", app.status_var.get())
+                self.assertEqual("normal", str(app.start_button.cget("state")))
+            finally:
+                root.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
-

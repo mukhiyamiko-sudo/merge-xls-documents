@@ -16,7 +16,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from merger import MergeCancelled, discover_files, merge_files
 
 
-APP_NAME = "合并文档"
+APP_NAME = "合并文档 V2"
 BG = "#F3F7FA"
 CARD = "#FFFFFF"
 INK = "#163247"
@@ -72,7 +72,7 @@ class MergeApp:
         ttk.Label(shell, text=APP_NAME, style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             shell,
-            text="拖入文件夹，自动校验并合并第一层的 .xls 文件",
+            text="拖入或选择文件夹，读取清单后点击“开始合并”",
             style="Sub.TLabel",
         ).pack(anchor="w", pady=(2, 16))
 
@@ -190,7 +190,7 @@ class MergeApp:
             return
         selected = filedialog.askdirectory(title="选择包含 .xls 文件的文件夹")
         if selected:
-            self._set_folder(Path(selected), auto_start=True)
+            self._set_folder(Path(selected))
 
     def _on_drop(self, event: tk.Event) -> None:
         if self.busy:
@@ -206,18 +206,37 @@ class MergeApp:
         if not folder.is_dir():
             messagebox.showwarning(APP_NAME, "拖入的内容不是文件夹。")
             return
-        self._set_folder(folder, auto_start=True)
+        self._set_folder(folder)
 
-    def _set_folder(self, folder: Path, *, auto_start: bool) -> None:
+    def _set_folder(self, folder: Path) -> None:
         self.folder = folder
         self.output_path = None
         self.folder_var.set(str(folder))
-        self.status_var.set("已选择文件夹")
-        self.start_button.configure(state="normal")
         self.open_button.configure(state="disabled")
         self._log(f"已选择：{folder}")
-        if auto_start:
-            self.root.after(150, self._start_merge)
+        try:
+            files, old_outputs = discover_files(folder)
+        except Exception as exc:
+            self.status_var.set("读取文件夹失败")
+            self.count_var.set("0 / 0")
+            self.progress.configure(value=0, maximum=1)
+            self.start_button.configure(state="disabled")
+            self._log(f"读取失败：{exc}")
+            return
+
+        total = len(files)
+        self.progress.configure(value=0, maximum=max(total, 1))
+        self.count_var.set(f"0 / {total}")
+        if total:
+            self.status_var.set(f"已读取 {total} 个 Excel 文件，请确认后点击“开始合并”")
+            self.start_button.configure(state="normal")
+            self._log(f"扫描完成：发现 {total} 个可处理的 .xls 文件")
+        else:
+            self.status_var.set("未发现可处理的 .xls 文件")
+            self.start_button.configure(state="disabled")
+            self._log("扫描完成：未发现可处理的 .xls 文件")
+        if old_outputs:
+            self._log(f"另发现 {len(old_outputs)} 个历史合并结果，开始时将提醒并排除")
 
     def _start_merge(self) -> None:
         if self.busy or self.folder is None:
