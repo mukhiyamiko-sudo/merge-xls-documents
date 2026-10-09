@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>合并文档｜需求说明</title>
+  <style>
+    :root{--ink:#153247;--muted:#68808f;--accent:#147d92;--soft:#edf6f8;--line:#d8e5ea;--card:#fff;--bg:#f4f8fa}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft YaHei UI","PingFang SC",Arial,sans-serif;line-height:1.65}
+    main{max-width:1080px;margin:auto;padding:54px 28px 72px}
+    .hero{display:grid;grid-template-columns:1.5fr .8fr;gap:28px;align-items:end;margin-bottom:28px}
+    .eyebrow{color:var(--accent);font-weight:700;letter-spacing:.12em;font-size:13px}
+    .hero h1{font-size:44px;line-height:1.15;margin:8px 0 14px}
+    .hero p{margin:0;color:var(--muted);font-size:17px}
+    .stamp{background:var(--ink);color:#fff;border-radius:18px;padding:22px}
+    .stamp b{display:block;font-size:26px}.stamp span{opacity:.75;font-size:13px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:24px 0}
+    .metric,.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 30px rgba(20,58,75,.05)}
+    .metric{padding:18px}.metric b{display:block;font-size:25px;color:var(--accent)}.metric span{color:var(--muted);font-size:13px}
+    .card{padding:24px;margin-top:16px}.card h2{font-size:20px;margin:0 0 14px}
+    .flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center}
+    .step{background:var(--soft);border-radius:12px;padding:16px;text-align:center;font-weight:700;min-height:78px;display:flex;align-items:center;justify-content:center}
+    .arrow{text-align:center;color:var(--accent);font-size:22px}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th{text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);padding:10px}
+    td{padding:11px 10px;border-bottom:1px solid #edf2f4;vertical-align:top}
+    .tag{display:inline-block;background:var(--soft);color:var(--accent);padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700}
+    .ok{color:#13745b;font-weight:700}.warn{color:#a65e17;font-weight:700}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    ul{margin:0;padding-left:20px}
+    footer{color:var(--muted);font-size:12px;margin-top:20px;text-align:right}
+    @media(max-width:800px){.hero,.two{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div>
+      <div class="eyebrow">WINDOWS DESKTOP UTILITY</div>
+      <h1>合并文档</h1>
+      <p>把一个文件夹中的上百个旧版 .xls 明细，安全、可追踪地合并成一个标准工作簿。</p>
+    </div>
+    <div class="stamp"><span>需求基线</span><b>Version 1.0</b><span>2026-10-09 · 已确认</span></div>
+  </section>
+
+  <section class="grid">
+    <div class="metric"><b>10 列</b><span>固定表头校验</span></div>
+    <div class="metric"><b>5 项</b><span>底部汇总必须完整</span></div>
+    <div class="metric"><b>1 层</b><span>只扫描文件夹第一层</span></div>
+    <div class="metric"><b>65,536</b><span>.xls 最大行数保护</span></div>
+  </section>
+
+  <section class="card">
+    <h2>处理流程</h2>
+    <div class="flow">
+      <div class="step">拖入或选择文件夹</div><div class="arrow">→</div>
+      <div class="step">按文件名排序并校验</div><div class="arrow">→</div>
+      <div class="step">去汇总 · 合并 · 输出</div>
+    </div>
+  </section>
+
+  <section class="two">
+    <div class="card">
+      <h2>输入规则</h2>
+      <ul>
+        <li>只处理第一层的 <span class="tag">.xls</span></li>
+        <li>兼容标准二进制 .xls 与 HTML 型 .xls</li>
+        <li>表头不同，立即跳过并记录原因</li>
+        <li>汇总不完整，标记为需要手动处理</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>输出规则</h2>
+      <ul>
+        <li>表头只保留一次，明细纵向追加</li>
+        <li>输出到源文件夹，不修改原文件</li>
+        <li>命名为“合并结果_日期_时间.xls”</li>
+        <li>历史合并结果提醒后排除，避免重复</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>界面交互</h2>
+    <table>
+      <tr><th>功能</th><th>行为</th><th>状态</th></tr>
+      <tr><td>文件夹拖放</td><td>放入后自动识别并开始处理</td><td class="ok">必需</td></tr>
+      <tr><td>进度条</td><td>显示完成文件数与总数</td><td class="ok">必需</td></tr>
+      <tr><td>取消</td><td>停止本次任务，不留下半成品</td><td class="ok">必需</td></tr>
+      <tr><td>运行日志</td><td>显示成功、跳过、错误与输出路径，可清空</td><td class="ok">必需</td></tr>
+      <tr><td>打开所在文件夹</td><td>完成后启用，并选中生成文件</td><td class="ok">必需</td></tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>异常策略</h2>
+    <table>
+      <tr><th>情况</th><th>处理</th></tr>
+      <tr><td>单个文件打不开</td><td class="warn">跳过，继续其他文件</td></tr>
+      <tr><td>表头不是固定 10 列</td><td class="warn">跳过并记录文件名与原因</td></tr>
+      <tr><td>缺少任一底部汇总</td><td class="warn">跳过，提示需要手动处理</td></tr>
+      <tr><td>没有有效文件</td><td class="warn">不生成结果，明确提示</td></tr>
+      <tr><td>任务取消或写入失败</td><td class="warn">删除临时文件，不保留不完整结果</td></tr>
+    </table>
+  </section>
+  <footer>合并文档 · 需求说明 · 本地离线处理</footer>
+</main>
+</body>
+</html>
+
