@@ -179,6 +179,54 @@ class MergerTests(unittest.TestCase):
 
 
 class AppInteractionTests(unittest.TestCase):
+    def test_window_uses_a_logo_and_updated_controls(self) -> None:
+        root = TkinterDnD.Tk()
+        root.withdraw()
+        try:
+            with patch.object(root, "iconbitmap", wraps=root.iconbitmap) as set_icon:
+                app = MergeApp(root)
+            app._draw_drop_zone(SimpleNamespace(width=700))
+            drop_text = [
+                app.drop.itemcget(item, "text")
+                for item in app.drop.find_all()
+                if app.drop.type(item) == "text"
+            ]
+
+            icon_path = Path(set_icon.call_args.args[0])
+            self.assertEqual("app_icon.ico", icon_path.name)
+            self.assertTrue(icon_path.is_file())
+            self.assertIn("拖拽多个.xls文件或文件夹", drop_text)
+            self.assertEqual("打开输出文件夹", app.open_button.cget("text"))
+        finally:
+            root.destroy()
+
+    def test_progress_card_reveals_only_after_files_are_found(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            (folder / "claim_001.xls").write_bytes(b"sample")
+            root = TkinterDnD.Tk()
+            root.withdraw()
+            try:
+                app = MergeApp(root)
+                callbacks: list[tuple[object, tuple[object, ...]]] = []
+                root.after = Mock(side_effect=lambda _delay, fn, *args: callbacks.append((fn, args)))
+                self.assertEqual("", app.progress.master.winfo_manager())
+
+                app._set_folder(folder)
+                self.assertEqual("pack", app.progress_host.winfo_manager())
+                self.assertLess(float(app.progress.master.place_info()["relwidth"]), 1.0)
+
+                while callbacks:
+                    callback, args = callbacks.pop(0)
+                    callback(*args)
+                self.assertAlmostEqual(1.0, float(app.progress.master.place_info()["relwidth"]))
+
+                (folder / "claim_001.xls").unlink()
+                app._set_folder(folder)
+                self.assertEqual("", app.progress_host.winfo_manager())
+            finally:
+                root.destroy()
+
     def test_dragged_old_output_is_excluded_before_merge(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
@@ -271,7 +319,6 @@ class AppInteractionTests(unittest.TestCase):
 
                 app._set_folder(folder)
 
-                root.after.assert_not_called()
                 app._start_merge.assert_not_called()
                 self.assertEqual("0 / 2", app.count_var.get())
                 self.assertIn("已读取 2 个 Excel 文件", app.status_var.get())

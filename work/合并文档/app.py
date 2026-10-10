@@ -16,7 +16,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from merger import MergeCancelled, discover_files, is_generated_output, merge_files
 
 
-APP_NAME = "合并文档 V4"
+APP_NAME = "合并文档 V5"
 BG = "#F3F7FA"
 CARD = "#FFFFFF"
 INK = "#163247"
@@ -35,8 +35,10 @@ class MergeApp:
         self.cancel_event = threading.Event()
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
+        self._progress_animation = 0
 
         root.title(APP_NAME)
+        root.iconbitmap(str(Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "assets" / "app_icon.ico"))
         root.geometry("820x760")
         root.minsize(760, 700)
         root.configure(bg=BG)
@@ -106,14 +108,15 @@ class MergeApp:
         self.cancel_button.pack(side=LEFT, padx=(10, 0))
         self.open_button = ttk.Button(
             buttons,
-            text="打开所在文件夹",
+            text="打开输出文件夹",
             command=self._open_output,
             state="disabled",
         )
         self.open_button.pack(side=RIGHT)
 
-        progress_card = ttk.Frame(shell, style="Card.TFrame", padding=(18, 14))
-        progress_card.pack(fill="x", pady=(14, 0))
+        self.progress_host = ttk.Frame(shell, height=78)
+        self.progress_host.pack_propagate(False)
+        progress_card = ttk.Frame(self.progress_host, style="Card.TFrame", padding=(18, 14))
         self.status_var = tk.StringVar(value="等待选择文件夹")
         self.count_var = tk.StringVar(value="0 / 0")
         progress_card.columnconfigure(0, weight=1)
@@ -130,8 +133,9 @@ class MergeApp:
         self.progress = ttk.Progressbar(progress_card, mode="determinate", maximum=100)
         self.progress.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
 
-        log_card = ttk.Frame(shell, style="Card.TFrame", padding=(18, 14))
-        log_card.pack(fill="both", expand=True, pady=(14, 0))
+        self.log_card = ttk.Frame(shell, style="Card.TFrame", padding=(18, 14))
+        self.log_card.pack(fill="both", expand=True, pady=(14, 0))
+        log_card = self.log_card
         log_header = ttk.Frame(log_card, style="Card.TFrame")
         log_header.pack(fill="x")
         ttk.Label(log_header, text="运行日志", style="Card.TLabel").pack(side=LEFT)
@@ -164,7 +168,7 @@ class MergeApp:
         self.drop.create_text(
             width / 2,
             45,
-            text="把多个 .xls 文件拖到这里",
+            text="拖拽多个.xls文件或文件夹",
             fill=INK,
             font=("Microsoft YaHei UI", 15, "bold"),
         )
@@ -185,6 +189,29 @@ class MergeApp:
 
     def _clear_log(self) -> None:
         self.log_text.delete("1.0", END)
+
+    def _show_progress(self) -> None:
+        self._progress_animation += 1
+        animation = self._progress_animation
+        self.progress_host.pack(fill="x", pady=(14, 0), before=self.log_card)
+        card = self.progress.master
+        card.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.04, relheight=1)
+
+        def expand(step: int) -> None:
+            if animation != self._progress_animation:
+                return
+            fraction = step / 12
+            width = 0.04 + 0.96 * (1 - (1 - fraction) ** 3)
+            card.place_configure(relwidth=width)
+            if step < 12:
+                self.root.after(18, expand, step + 1)
+
+        self.root.after(18, expand, 1)
+
+    def _hide_progress(self) -> None:
+        self._progress_animation += 1
+        self.progress.master.place_forget()
+        self.progress_host.pack_forget()
 
     def _choose_folder(self) -> None:
         if self.busy:
@@ -237,6 +264,7 @@ class MergeApp:
         try:
             files, old_outputs = self._current_files()
         except Exception as exc:
+            self._hide_progress()
             self.status_var.set("读取文件夹失败")
             self.count_var.set("0 / 0")
             self.progress.configure(value=0, maximum=1)
@@ -248,10 +276,12 @@ class MergeApp:
         self.progress.configure(value=0, maximum=max(total, 1))
         self.count_var.set(f"0 / {total}")
         if total:
+            self._show_progress()
             self.status_var.set(f"已读取 {total} 个 Excel 文件，请确认后点击“开始合并”")
             self.start_button.configure(state="normal")
             self._log(f"扫描完成：发现 {total} 个可处理的 .xls 文件")
         else:
+            self._hide_progress()
             self.status_var.set("未发现可处理的 .xls 文件")
             self.start_button.configure(state="disabled")
             self._log("扫描完成：未发现可处理的 .xls 文件")
