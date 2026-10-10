@@ -234,7 +234,10 @@ class MergeApp:
         if not dropped or not all(path.is_file() for path in dropped):
             messagebox.showwarning(APP_NAME, "请拖入一个文件夹，或同一文件夹中的多个 .xls 文件。")
             return
-        eligible = [path for path in dropped if path.suffix.lower() == ".xls" and not path.name.startswith("~$")]
+        eligible = [
+            path for path in dropped
+            if (path.suffix.lower() == ".xls" or is_generated_output(path)) and not path.name.startswith("~$")
+        ]
         if not eligible:
             messagebox.showwarning(APP_NAME, "拖入的文件中没有 .xls 文件。")
             return
@@ -258,9 +261,9 @@ class MergeApp:
         self.folder = folder
         self.dropped_files = selected_files
         self.output_path = None
-        self.folder_var.set(str(folder) if selected_files is None else f"已拖入 {len(selected_files)} 个 .xls 文件：{folder}")
+        self.folder_var.set(str(folder) if selected_files is None else f"已拖入 {len(selected_files)} 个文件：{folder}")
         self.open_button.configure(state="disabled")
-        self._log(f"已选择：{folder}" if selected_files is None else f"已拖入：{len(selected_files)} 个 .xls 文件（{folder}）")
+        self._log(f"已选择：{folder}" if selected_files is None else f"已拖入：{len(selected_files)} 个文件（{folder}）")
         try:
             files, old_outputs = self._current_files()
         except Exception as exc:

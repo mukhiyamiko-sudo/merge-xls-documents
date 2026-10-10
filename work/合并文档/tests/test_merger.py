@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import xlrd
+from openpyxl import load_workbook
 from tkinterdnd2 import TkinterDnD
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -80,7 +81,7 @@ class MergerTests(unittest.TestCase):
 
             files, generated = discover_files(folder)
             self.assertEqual([], generated)
-            result = merge_files(files, folder)
+            result = merge_files(files, folder, output_format="xls")
 
             self.assertEqual(2, result.merged_files)
             self.assertEqual(2, result.data_rows)
@@ -114,7 +115,7 @@ class MergerTests(unittest.TestCase):
             write_html_xls(bad_header, [row], bad_header=True)
             write_html_xls(bad_footer, [row], missing_footer=True)
 
-            result = merge_files([valid, bad_header, bad_footer], folder)
+            result = merge_files([valid, bad_header, bad_footer], folder, output_format="xls")
 
             self.assertEqual(1, result.merged_files)
             self.assertEqual(2, result.skipped_files)
@@ -130,7 +131,7 @@ class MergerTests(unittest.TestCase):
             write_html_xls(six, [row] * 6)
             write_html_xls(two, [row] * 2)
 
-            result = merge_files([two, six], folder)
+            result = merge_files([two, six], folder, output_format="xls")
 
             sheet = xlrd.open_workbook(str(result.output_path)).sheet_by_index(0)
             self.assertEqual(8, result.data_rows)
@@ -146,7 +147,7 @@ class MergerTests(unittest.TestCase):
             write_html_xls(invalid, [row])
             messages: list[str] = []
 
-            result = merge_files([invalid, valid], folder, log=messages.append)
+            result = merge_files([invalid, valid], folder, log=messages.append, output_format="xls")
 
             self.assertEqual(1, result.merged_files)
             self.assertEqual(1, result.skipped_files)
@@ -160,11 +161,45 @@ class MergerTests(unittest.TestCase):
             row = ["94", "A", "1", "ITEM", "0001", "M", "-1", "1", "EA", "-1"]
             write_html_xls(folder / "source.xls", [row])
             (folder / "合并结果_20261009_120000.xls").write_bytes(b"old")
+            (folder / "合并结果_20261009_130000.xlsx").write_bytes(b"old")
 
             files, generated = discover_files(folder)
 
             self.assertEqual(["source.xls"], [path.name for path in files])
-            self.assertEqual(["合并结果_20261009_120000.xls"], [path.name for path in generated])
+            self.assertEqual(
+                ["合并结果_20261009_120000.xls", "合并结果_20261009_130000.xlsx"],
+                [path.name for path in generated],
+            )
+
+    def test_macos_writes_real_xlsx_without_changing_merge_data(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            first = folder / "claim_details_000000400699589.xls"
+            second = folder / "claim_details_000005301102474.xls"
+            row = ["94", "A", "1", "ITEM", "0001", "M", "-1", "1", "EA", "-1"]
+            write_html_xls(first, [row, row])
+            write_html_xls(second, [row])
+
+            with patch("merger.sys.platform", "darwin"):
+                result = merge_files([second, first], folder)
+
+            self.assertEqual(".xlsx", result.output_path.suffix)
+            book = load_workbook(result.output_path, read_only=True, data_only=True)
+            try:
+                sheet = book.active
+                self.assertEqual((4, 11), (sheet.max_row, sheet.max_column))
+                self.assertEqual("Invoice number", sheet.cell(1, 1).value)
+                self.assertEqual(["0400699589", "0400699589", "5301102474"],
+                                 [sheet.cell(index, 1).value for index in (2, 3, 4)])
+                self.assertEqual([94, "A", 1, "ITEM", 1, "M", -1, 1, "EA", -1],
+                                 [sheet.cell(2, col).value for col in range(2, 12)])
+                self.assertFalse(any("TOTAL" in str(cell.value) for cells in sheet for cell in cells))
+            finally:
+                book.close()
+
+            files, generated = discover_files(folder)
+            self.assertEqual([first, second], files)
+            self.assertEqual([result.output_path], generated)
 
     def test_reads_nested_table_shape(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -280,7 +315,7 @@ class AppInteractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
             source = folder / "claim_details_000005301111972.xls"
-            old_output = folder / "合并结果_20261010_100000.xls"
+            old_output = folder / "合并结果_20261010_100000.xlsx"
             source.write_bytes(b"sample")
             old_output.write_bytes(b"old")
 

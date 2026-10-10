@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -34,7 +35,7 @@ FOOTER_LABELS = (
     "TOTAL HANDLING COST",
     "TOTAL DISPOSAL FEE",
 )
-OUTPUT_PATTERN = re.compile(r"^合并结果_\d{8}_\d{6}(?:_\d+)?\.xls$", re.IGNORECASE)
+OUTPUT_PATTERN = re.compile(r"^合并结果_\d{8}_\d{6}(?:_\d+)?\.xlsx?$", re.IGNORECASE)
 INVOICE_PATTERN = re.compile(r"0{5}(\d+)$")
 MAX_XLS_ROWS = 65_536
 
@@ -267,16 +268,16 @@ def invoice_number(path: Path) -> str:
 def discover_files(folder: Path) -> tuple[list[Path], list[Path]]:
     if not folder.is_dir():
         raise NotADirectoryError(f"文件夹不存在：{folder}")
-    all_xls = sorted(
+    found = sorted(
         (
             path
             for path in folder.iterdir()
-            if path.is_file() and path.suffix.lower() == ".xls" and not path.name.startswith("~$")
+            if path.is_file() and path.suffix.lower() in {".xls", ".xlsx"} and not path.name.startswith("~$")
         ),
         key=lambda path: path.name.casefold(),
     )
-    generated = [path for path in all_xls if is_generated_output(path)]
-    sources = [path for path in all_xls if not is_generated_output(path)]
+    generated = [path for path in found if is_generated_output(path)]
+    sources = [path for path in found if path.suffix.lower() == ".xls" and not is_generated_output(path)]
     return sources, generated
 
 
@@ -308,7 +309,7 @@ def _styles() -> tuple[xlwt.XFStyle, xlwt.XFStyle]:
     return left, right
 
 
-def _write_output(path: Path, sheet_name: str, rows: Sequence[Sequence[object]], cancel: Event) -> None:
+def _write_xls_output(path: Path, sheet_name: str, rows: Sequence[Sequence[object]], cancel: Event) -> None:
     left, right = _styles()
     workbook = xlwt.Workbook(encoding="utf-8", style_compression=2)
     sheet = workbook.add_sheet(_safe_sheet_name(sheet_name), cell_overwrite_ok=False)
@@ -336,12 +337,55 @@ def _write_output(path: Path, sheet_name: str, rows: Sequence[Sequence[object]],
             temp_path.unlink()
 
 
-def next_output_path(folder: Path, now: datetime | None = None) -> Path:
+def _write_xlsx_output(path: Path, sheet_name: str, rows: Sequence[Sequence[object]], cancel: Event) -> None:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = _safe_sheet_name(sheet_name)
+    widths = (15.0, 4.75, 35.375, 9.75, 22.0, 12.0, 9.1, 10.3, 10.3, 3.75, 9.75)
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+
+    font = Font(name="宋体", size=11)
+    alignments = (Alignment(horizontal="left", vertical="top"),
+                  Alignment(horizontal="right", vertical="top"))
+    for row_index, values in enumerate((OUTPUT_HEADER, *rows), start=1):
+        if row_index % 100 == 0 and cancel.is_set():
+            raise MergeCancelled("用户已取消本次合并")
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(row_index, column, value)
+            cell.font = font
+            cell.alignment = alignments[column >= 4]
+
+    temp_path = path.with_name(path.stem + ".tmp.xlsx")
+    try:
+        workbook.save(str(temp_path))
+        if cancel.is_set():
+            raise MergeCancelled("用户已取消本次合并")
+        os.replace(temp_path, path)
+    finally:
+        workbook.close()
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def _output_extension(output_format: str | None) -> str:
+    selected = output_format or ("xlsx" if sys.platform == "darwin" else "xls")
+    if selected not in {"xls", "xlsx"}:
+        raise ValueError(f"不支持的输出格式：{selected}")
+    return f".{selected}"
+
+
+def next_output_path(folder: Path, now: datetime | None = None, *, output_format: str | None = None) -> Path:
     stamp = (now or datetime.now()).strftime("%Y%m%d_%H%M%S")
-    candidate = folder / f"合并结果_{stamp}.xls"
+    extension = _output_extension(output_format)
+    candidate = folder / f"合并结果_{stamp}{extension}"
     sequence = 2
     while candidate.exists():
-        candidate = folder / f"合并结果_{stamp}_{sequence}.xls"
+        candidate = folder / f"合并结果_{stamp}_{sequence}{extension}"
         sequence += 1
     return candidate
 
@@ -358,6 +402,7 @@ def merge_files(
     progress: ProgressCallback | None = None,
     log: LogCallback | None = None,
     output_path: Path | None = None,
+    output_format: str | None = None,
 ) -> MergeResult:
     ordered = sorted((Path(path) for path in files), key=lambda path: path.name.casefold())
     cancel = cancel or Event()
@@ -390,10 +435,13 @@ def merge_files(
     if first_valid is None:
         raise InvalidWorkbook("没有可合并的有效 .xls 文件")
     if len(details) + 1 > MAX_XLS_ROWS:
-        raise InvalidWorkbook(f"合并后共有 {len(details) + 1} 行，超过 .xls 的 65,536 行上限")
+        raise InvalidWorkbook(f"合并后共有 {len(details) + 1} 行，超过约定的 65,536 行上限")
 
-    destination = output_path or next_output_path(output_folder)
-    _write_output(destination, first_valid.stem, details, cancel)
+    destination = output_path or next_output_path(output_folder, output_format=output_format)
+    if destination.suffix.lower() == ".xlsx":
+        _write_xlsx_output(destination, first_valid.stem, details, cancel)
+    else:
+        _write_xls_output(destination, first_valid.stem, details, cancel)
     return MergeResult(
         output_path=destination,
         total_files=len(ordered),

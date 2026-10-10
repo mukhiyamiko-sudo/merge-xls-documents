@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import xlrd
+from openpyxl import load_workbook
 
 
 HEADER = (
@@ -52,12 +53,22 @@ def main(command: list[str]) -> int:
         result = json.loads(report.read_text(encoding="utf-8"))
         assert result["ok"] is True, result
         assert (result["merged_files"], result["skipped_files"], result["data_rows"]) == (2, 0, 2), result
-        book = xlrd.open_workbook(result["output"])
-        sheet = book.sheet_by_index(0)
-        assert (sheet.nrows, sheet.ncols) == (3, 11), (sheet.nrows, sheet.ncols)
-        assert [sheet.cell_value(index, 0) for index in (1, 2)] == ["0400699589", "5301102474"]
-        assert [sheet.cell_value(index, 2) for index in (1, 2)] == ["FIRST", "SECOND"]
-        assert not any("TOTAL" in str(sheet.cell_value(row, col)) for row in range(sheet.nrows) for col in range(sheet.ncols))
+        output = Path(result["output"])
+        assert output.suffix == (".xlsx" if sys.platform == "darwin" else ".xls"), output
+        if output.suffix == ".xlsx":
+            book = load_workbook(output, read_only=True, data_only=True)
+            try:
+                rows = list(book.active.values)
+            finally:
+                book.close()
+        else:
+            book = xlrd.open_workbook(str(output))
+            sheet = book.sheet_by_index(0)
+            rows = [sheet.row_values(index) for index in range(sheet.nrows)]
+        assert len(rows) == 3 and all(len(row) == 11 for row in rows), rows
+        assert [row[0] for row in rows[1:]] == ["0400699589", "5301102474"]
+        assert [row[2] for row in rows[1:]] == ["FIRST", "SECOND"]
+        assert not any("TOTAL" in str(value) for row in rows for value in row)
 
         gui_report = folder / "gui.json"
         gui = subprocess.run(

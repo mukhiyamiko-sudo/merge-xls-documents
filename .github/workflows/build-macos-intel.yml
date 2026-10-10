@@ -67,6 +67,6 @@ jobs:
             'dist/合并文档V5-macOS-Intel-candidate.zip' \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "合并文档 V5 macOS Intel 候选包" \
-            --notes '此包在 GitHub macOS 15 Intel 构建机通过了测试、打包自检和代码签名检查；尚未在目标 macOS Big Sur 11.7.9 实机验收，因此不是已确认兼容的正式版。未进行 Apple Developer ID 公证，首次打开可能需要手动允许。请只在确认下载来源可信时运行。' \
+            --title "合并文档 V5 macOS Intel 候选包（XLSX 输出）" \
+            --notes '此包读取 .xls 源文件并输出真正的 .xlsx 结果。在 GitHub macOS 15 Intel 构建机通过了测试、打包自检和代码签名检查；尚未在目标 macOS Big Sur 11.7.9 实机验收，因此不是已确认兼容的正式版。未进行 Apple Developer ID 公证，首次打开可能需要手动允许。请只在确认下载来源可信时运行。' \
             --prerelease
