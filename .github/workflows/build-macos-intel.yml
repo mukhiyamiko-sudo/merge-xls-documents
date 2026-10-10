@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -58,3 +58,15 @@ jobs:
           path: dist/合并文档V5-macOS-Intel-candidate.zip
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish shareable prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v5-macos-intel-candidate-${GITHUB_RUN_NUMBER}" \
+            'dist/合并文档V5-macOS-Intel-candidate.zip' \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "合并文档 V5 macOS Intel 候选包" \
+            --notes '此包在 GitHub macOS 15 Intel 构建机通过了测试、打包自检和代码签名检查；尚未在目标 macOS Big Sur 11.7.9 实机验收，因此不是已确认兼容的正式版。未进行 Apple Developer ID 公证，首次打开可能需要手动允许。请只在确认下载来源可信时运行。' \
+            --prerelease
