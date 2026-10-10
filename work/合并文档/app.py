@@ -16,7 +16,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from merger import MergeCancelled, discover_files, merge_files
 
 
-APP_NAME = "合并文档 V2"
+APP_NAME = "合并文档 V3"
 BG = "#F3F7FA"
 CARD = "#FFFFFF"
 INK = "#163247"

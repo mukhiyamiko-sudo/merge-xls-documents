@@ -67,11 +67,11 @@ class MergerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
             write_html_xls(
-                folder / "claim_002.xls",
+                folder / "claim_details_000005301102474.xls",
                 [["94", "B", "2", "ITEM B", "0002", "M2", "-2.5", "2", "EA", "-5"]],
             )
             write_html_xls(
-                folder / "claim_001.xls",
+                folder / "claim_details_000000400699589.xls",
                 [["94", "A", "1", "ITEM A", "0001", "M1", "-1", "1", "EA", "-1"]],
             )
 
@@ -84,8 +84,13 @@ class MergerTests(unittest.TestCase):
             book = xlrd.open_workbook(str(result.output_path))
             sheet = book.sheet_by_index(0)
             self.assertEqual(3, sheet.nrows)
-            self.assertEqual("A", sheet.cell_value(1, 1))
-            self.assertEqual("B", sheet.cell_value(2, 1))
+            self.assertEqual(11, sheet.ncols)
+            self.assertEqual("Invoice number", sheet.cell_value(0, 0))
+            self.assertEqual("0400699589", sheet.cell_value(1, 0))
+            self.assertEqual("5301102474", sheet.cell_value(2, 0))
+            self.assertEqual(["CODE", "DESCRIPTION", "ITEM #", "ITEM DESCRIPTION", "UPC"], sheet.row_values(0)[1:6])
+            self.assertEqual([94, "A", 1, "ITEM A", 1, "M1", -1, 1, "EA", -1], sheet.row_values(1)[1:])
+            self.assertEqual("B", sheet.cell_value(2, 2))
             self.assertNotIn(
                 "TOTAL",
                 " ".join(
@@ -98,9 +103,9 @@ class MergerTests(unittest.TestCase):
     def test_bad_header_and_incomplete_footer_are_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
-            valid = folder / "a.xls"
-            bad_header = folder / "b.xls"
-            bad_footer = folder / "c.xls"
+            valid = folder / "claim_details_000001111111111.xls"
+            bad_header = folder / "claim_details_000002222222222.xls"
+            bad_footer = folder / "claim_details_000003333333333.xls"
             row = ["94", "A", "1", "ITEM", "0001", "M", "-1", "1", "EA", "-1"]
             write_html_xls(valid, [row])
             write_html_xls(bad_header, [row], bad_header=True)
@@ -112,6 +117,39 @@ class MergerTests(unittest.TestCase):
             self.assertEqual(2, result.skipped_files)
             self.assertTrue(any("表头" in issue.reason for issue in result.issues))
             self.assertTrue(any("五项汇总" in issue.reason for issue in result.issues))
+
+    def test_invoice_number_fills_every_detail_row_from_its_source_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            six = folder / "claim_details_000005301106261.xls"
+            two = folder / "claim_details_000005301111972.xls"
+            row = ["94", "A", "1", "ITEM", "0001", "M", "-1", "1", "EA", "-1"]
+            write_html_xls(six, [row] * 6)
+            write_html_xls(two, [row] * 2)
+
+            result = merge_files([two, six], folder)
+
+            sheet = xlrd.open_workbook(str(result.output_path)).sheet_by_index(0)
+            self.assertEqual(8, result.data_rows)
+            self.assertEqual(["5301106261"] * 6 + ["5301111972"] * 2, sheet.col_values(0)[1:])
+
+    def test_filename_without_five_zero_prefix_is_skipped_and_logged(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            valid = folder / "claim_details_000000400699589.xls"
+            invalid = folder / "claim_details_000040400699589.xls"
+            row = ["94", "A", "1", "ITEM", "0001", "M", "-1", "1", "EA", "-1"]
+            write_html_xls(valid, [row])
+            write_html_xls(invalid, [row])
+            messages: list[str] = []
+
+            result = merge_files([invalid, valid], folder, log=messages.append)
+
+            self.assertEqual(1, result.merged_files)
+            self.assertEqual(1, result.skipped_files)
+            self.assertEqual(invalid, result.issues[0].path)
+            self.assertIn("五个 0", result.issues[0].reason)
+            self.assertTrue(any("跳过" in message and invalid.name in message for message in messages))
 
     def test_generated_outputs_are_excluded(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

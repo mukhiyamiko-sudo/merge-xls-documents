@@ -26,7 +26,7 @@ EXPECTED_HEADER = (
     "UOM",
     "CLAIM AMT",
 )
-OUTPUT_HEADER = EXPECTED_HEADER[:5] + ("MODEL\u00a0#",) + EXPECTED_HEADER[6:]
+OUTPUT_HEADER = ("Invoice number",) + EXPECTED_HEADER[:5] + ("MODEL\u00a0#",) + EXPECTED_HEADER[6:]
 FOOTER_LABELS = (
     "TOTAL QUANTITY",
     "TOTAL FOR CLAIM #",
@@ -35,6 +35,7 @@ FOOTER_LABELS = (
     "TOTAL DISPOSAL FEE",
 )
 OUTPUT_PATTERN = re.compile(r"^合并结果_\d{8}_\d{6}(?:_\d+)?\.xls$", re.IGNORECASE)
+INVOICE_PATTERN = re.compile(r"0{5}(\d+)$")
 MAX_XLS_ROWS = 65_536
 
 
@@ -256,6 +257,13 @@ def is_generated_output(path: Path) -> bool:
     return bool(OUTPUT_PATTERN.match(path.name))
 
 
+def invoice_number(path: Path) -> str:
+    match = INVOICE_PATTERN.search(path.stem)
+    if match is None:
+        raise InvalidWorkbook("文件名中未找到连续五个 0 后接数字，无法提取 Invoice number")
+    return match.group(1)
+
+
 def discover_files(folder: Path) -> tuple[list[Path], list[Path]]:
     if not folder.is_dir():
         raise NotADirectoryError(f"文件夹不存在：{folder}")
@@ -304,18 +312,18 @@ def _write_output(path: Path, sheet_name: str, rows: Sequence[Sequence[object]],
     left, right = _styles()
     workbook = xlwt.Workbook(encoding="utf-8", style_compression=2)
     sheet = workbook.add_sheet(_safe_sheet_name(sheet_name), cell_overwrite_ok=False)
-    widths = (4.75, 35.375, 9.75, 22.0, 12.0, 9.1, 10.3, 10.3, 3.75, 9.75)
+    widths = (15.0, 4.75, 35.375, 9.75, 22.0, 12.0, 9.1, 10.3, 10.3, 3.75, 9.75)
     for index, width in enumerate(widths):
         sheet.col(index).width = int(width * 256)
 
     for column, value in enumerate(OUTPUT_HEADER):
-        sheet.write(0, column, value, left if column < 2 else right)
+        sheet.write(0, column, value, left if column < 3 else right)
 
     for row_index, row in enumerate(rows, start=1):
         if row_index % 100 == 0 and cancel.is_set():
             raise MergeCancelled("用户已取消本次合并")
         for column, value in enumerate(row):
-            sheet.write(row_index, column, value, left if column < 2 else right)
+            sheet.write(row_index, column, value, left if column < 3 else right)
 
     temp_path = path.with_name(path.stem + ".tmp.xls")
     try:
@@ -361,9 +369,10 @@ def merge_files(
         if cancel.is_set():
             raise MergeCancelled("用户已取消本次合并")
         try:
+            invoice = invoice_number(path)
             source = read_source(path)
             first_valid = first_valid or path
-            details.extend(source.rows)
+            details.extend([[invoice, *row] for row in source.rows])
             message = f"成功：{path.name}（{len(source.rows)} 条明细）"
             ok = True
         except Exception as exc:
