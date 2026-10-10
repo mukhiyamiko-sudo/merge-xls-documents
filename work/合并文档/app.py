@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import queue
-import subprocess
 import sys
 import threading
 from datetime import datetime
@@ -14,6 +13,7 @@ import tkinter as tk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 from merger import MergeCancelled, discover_files, is_generated_output, merge_files
+from platform_actions import reveal_file, set_window_icon
 
 
 APP_NAME = "合并文档 V5"
@@ -38,7 +38,7 @@ class MergeApp:
         self._progress_animation = 0
 
         root.title(APP_NAME)
-        root.iconbitmap(str(Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "assets" / "app_icon.ico"))
+        set_window_icon(root, Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "assets")
         root.geometry("820x760")
         root.minsize(760, 700)
         root.configure(bg=BG)
@@ -388,7 +388,7 @@ class MergeApp:
 
     def _open_output(self) -> None:
         if self.output_path and self.output_path.exists():
-            subprocess.Popen(["explorer.exe", "/select,", str(self.output_path)])
+            reveal_file(self.output_path)
 
     def _close(self) -> None:
         if self.busy and not messagebox.askyesno(APP_NAME, "任务仍在进行，确定退出吗？"):

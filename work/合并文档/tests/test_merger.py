@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import tkinter as tk
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,6 +180,7 @@ class MergerTests(unittest.TestCase):
 
 
 class AppInteractionTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "Windows icon behavior")
     def test_window_uses_a_logo_and_updated_controls(self) -> None:
         root = TkinterDnD.Tk()
         root.withdraw()
@@ -197,6 +199,37 @@ class AppInteractionTests(unittest.TestCase):
             self.assertTrue(icon_path.is_file())
             self.assertIn("拖拽多个.xls文件或文件夹", drop_text)
             self.assertEqual("打开输出文件夹", app.open_button.cget("text"))
+        finally:
+            root.destroy()
+
+    def test_mac_window_loads_png_icon_without_windows_ico(self) -> None:
+        root = TkinterDnD.Tk()
+        root.withdraw()
+        try:
+            with patch("app.sys.platform", "darwin"):
+                with patch.object(root, "iconbitmap") as windows_icon:
+                    with patch.object(root, "iconphoto") as mac_icon:
+                        MergeApp(root)
+
+            windows_icon.assert_not_called()
+            mac_icon.assert_called_once()
+            image = mac_icon.call_args.args[1]
+            self.assertEqual("a-logo.png", Path(image.cget("file")).name)
+        finally:
+            root.destroy()
+
+    def test_mac_window_starts_if_tk_rejects_window_icon(self) -> None:
+        root = TkinterDnD.Tk()
+        root.withdraw()
+        try:
+            with patch("app.sys.platform", "darwin"):
+                with patch.object(root, "iconphoto", side_effect=tk.TclError("unsupported")):
+                    try:
+                        app = MergeApp(root)
+                    except tk.TclError:
+                        self.fail("An unsupported Tk window icon must not prevent macOS startup")
+            self.assertEqual("合并文档 V5", root.title())
+            self.assertEqual("disabled", str(app.start_button.cget("state")))
         finally:
             root.destroy()
 
@@ -285,6 +318,7 @@ class AppInteractionTests(unittest.TestCase):
             finally:
                 root.destroy()
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows Explorer behavior")
     def test_open_output_selects_the_generated_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "合并结果_20261010_100000.xls"
@@ -297,9 +331,25 @@ class AppInteractionTests(unittest.TestCase):
                 app.events.put(("done", MergeResult(output, 1, 1, 0, 1)))
                 app._poll_events()
                 self.assertEqual("normal", str(app.open_button.cget("state")))
-                with patch("app.subprocess.Popen") as launch:
+                with patch("platform_actions.subprocess.Popen") as launch:
                     app._open_output()
                 launch.assert_called_once_with(["explorer.exe", "/select,", str(output)])
+            finally:
+                root.destroy()
+
+    def test_mac_open_output_reveals_generated_file_in_finder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "合并结果_20261010_100000.xls"
+            output.write_bytes(b"sample")
+            root = TkinterDnD.Tk()
+            root.withdraw()
+            try:
+                with patch("app.sys.platform", "darwin"):
+                    app = MergeApp(root)
+                    app.output_path = output
+                    with patch("platform_actions.subprocess.Popen") as launch:
+                        app._open_output()
+                launch.assert_called_once_with(["open", "-R", str(output)])
             finally:
                 root.destroy()
 

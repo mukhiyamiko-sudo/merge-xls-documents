@@ -1,0 +1,60 @@
+name: Build V5 macOS Intel candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt Pillow==11.3.0
+
+      - name: Run V5 tests
+        run: python -m unittest discover -s work/合并文档/tests -v
+
+      - name: Build Intel app bundle
+        run: |
+          python -m PyInstaller --noconfirm --clean --onedir --windowed \
+            --target-arch x86_64 \
+            --name '合并文档V5' \
+            --icon 'work/合并文档/assets/a-logo.png' \
+            --add-data 'work/合并文档/assets/a-logo.png:assets' \
+            --additional-hooks-dir 'work/合并文档' \
+            'work/合并文档/app.py'
+
+      - name: Verify packaged executable and Excel output
+        run: |
+          APP='dist/合并文档V5.app'
+          EXECUTABLE="$APP/Contents/MacOS/合并文档V5"
+          test -f "$EXECUTABLE"
+          file "$EXECUTABLE" | grep -F 'x86_64'
+          codesign --verify --deep --strict "$APP"
+          python 'work/合并文档/tests/smoke_package.py' "$EXECUTABLE"
+
+      - name: Preserve app bundle in a ZIP
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            'dist/合并文档V5.app' \
+            'dist/合并文档V5-macOS-Intel-candidate.zip'
+
+      - name: Upload candidate package
+        uses: actions/upload-artifact@v4
+        with:
+          name: MergeDocumentsV5-macOS-Intel-candidate
+          path: dist/合并文档V5-macOS-Intel-candidate.zip
+          if-no-files-found: error
+          retention-days: 30
