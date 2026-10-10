@@ -4,6 +4,7 @@ import sys
 import tempfile
 import tkinter as tk
 import unittest
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -13,7 +14,7 @@ from tkinterdnd2 import TkinterDnD
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import MergeApp
+from app import MergeApp, main
 from merger import MergeResult, discover_files, merge_files, read_source
 
 
@@ -180,6 +181,21 @@ class MergerTests(unittest.TestCase):
 
 
 class AppInteractionTests(unittest.TestCase):
+    def test_gui_self_test_constructs_window_and_writes_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            report = Path(temp) / "gui.json"
+            with patch("app.sys.argv", ["app.py", "--gui-self-test", str(report)]):
+                with patch("app.TkinterDnD.Tk") as make_root:
+                    with patch("app.MergeApp") as make_app:
+                        make_root.return_value.TkdndVersion = "2.9.2"
+                        code = main()
+
+            self.assertTrue(report.exists(), "GUI self-test must write its result")
+            self.assertEqual(0, code)
+            self.assertEqual({"ok": True, "tkdnd": "2.9.2"}, json.loads(report.read_text(encoding="utf-8")))
+            make_app.assert_called_once_with(make_root.return_value)
+            make_root.return_value.mainloop.assert_not_called()
+
     @unittest.skipUnless(sys.platform == "win32", "Windows icon behavior")
     def test_window_uses_a_logo_and_updated_controls(self) -> None:
         root = TkinterDnD.Tk()

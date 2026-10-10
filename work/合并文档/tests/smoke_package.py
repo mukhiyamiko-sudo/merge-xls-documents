@@ -58,7 +58,21 @@ def main(command: list[str]) -> int:
         assert [sheet.cell_value(index, 0) for index in (1, 2)] == ["0400699589", "5301102474"]
         assert [sheet.cell_value(index, 2) for index in (1, 2)] == ["FIRST", "SECOND"]
         assert not any("TOTAL" in str(sheet.cell_value(row, col)) for row in range(sheet.nrows) for col in range(sheet.ncols))
-    print("Packaged V5 smoke test passed: 2 files, 2 details, 11 columns")
+
+        gui_report = folder / "gui.json"
+        gui = subprocess.run(
+            [*command, "--gui-self-test", str(gui_report)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if gui.returncode or not gui_report.exists():
+            detail = gui_report.read_text(encoding="utf-8") if gui_report.exists() else "no GUI report"
+            raise AssertionError(f"Packaged GUI self-test failed ({gui.returncode}): {detail} {gui.stdout} {gui.stderr}")
+        gui_result = json.loads(gui_report.read_text(encoding="utf-8"))
+        assert gui_result["ok"] is True and gui_result["tkdnd"], gui_result
+    print("Packaged V5 smoke test passed: GUI, 2 files, 2 details, 11 columns")
     return 0
 
 

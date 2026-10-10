@@ -418,9 +418,30 @@ def run_self_test(folder: Path, report_path: Path) -> int:
     return code
 
 
+def run_gui_self_test(report_path: Path) -> int:
+    root = None
+    try:
+        root = TkinterDnD.Tk()
+        root.withdraw()
+        MergeApp(root)
+        root.update()
+        payload = {"ok": True, "tkdnd": str(root.TkdndVersion)}
+        code = 0
+    except Exception as exc:
+        payload = {"ok": False, "error": str(exc) or exc.__class__.__name__}
+        code = 1
+    finally:
+        if root is not None:
+            root.destroy()
+    report_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return code
+
+
 def main() -> int:
     if len(sys.argv) == 4 and sys.argv[1] == "--self-test":
         return run_self_test(Path(sys.argv[2]), Path(sys.argv[3]))
+    if len(sys.argv) == 3 and sys.argv[1] == "--gui-self-test":
+        return run_gui_self_test(Path(sys.argv[2]))
     root = TkinterDnD.Tk()
     MergeApp(root)
     root.mainloop()
