@@ -4,7 +4,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import xlrd
 from tkinterdnd2 import TkinterDnD
@@ -12,7 +13,7 @@ from tkinterdnd2 import TkinterDnD
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import MergeApp
-from merger import discover_files, merge_files, read_source
+from merger import MergeResult, discover_files, merge_files, read_source
 
 
 HEADER = [
@@ -178,6 +179,82 @@ class MergerTests(unittest.TestCase):
 
 
 class AppInteractionTests(unittest.TestCase):
+    def test_dragged_old_output_is_excluded_before_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            source = folder / "claim_details_000005301111972.xls"
+            old_output = folder / "合并结果_20261010_100000.xls"
+            source.write_bytes(b"sample")
+            old_output.write_bytes(b"old")
+
+            root = TkinterDnD.Tk()
+            root.withdraw()
+            try:
+                app = MergeApp(root)
+                root.after = Mock()
+                with patch("app.messagebox.showwarning"):
+                    app._on_drop(SimpleNamespace(data=f"{{{source}}} {{{old_output}}}"))
+
+                self.assertEqual("0 / 1", app.count_var.get())
+                self.assertIn("1 个历史合并结果", app.log_text.get("1.0", "end"))
+                with patch("app.messagebox.askyesno", return_value=True) as confirm:
+                    with patch("app.threading.Thread") as worker:
+                        app._start_merge()
+                confirm.assert_called_once()
+                self.assertEqual([source], worker.call_args.kwargs["args"][0])
+            finally:
+                root.destroy()
+
+    def test_dragging_multiple_xls_scans_only_dropped_files_until_start(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="xls drag ") as temp:
+            folder = Path(temp)
+            row = ["94", "A", "1", "ITEM", "0001", "M", "-1", "1", "EA", "-1"]
+            first = folder / "claim_details_000000400699589.xls"
+            second = folder / "claim_details_000005301102474.xls"
+            unselected = folder / "claim_details_000005301106261.xls"
+            for path in (first, second, unselected):
+                write_html_xls(path, [row])
+
+            root = TkinterDnD.Tk()
+            root.withdraw()
+            try:
+                app = MergeApp(root)
+                root.after = Mock()
+                event = SimpleNamespace(data=f"{{{second}}} {{{first}}}")
+                with patch("app.messagebox.showwarning"):
+                    app._on_drop(event)
+
+                self.assertFalse(app.busy)
+                self.assertEqual("0 / 2", app.count_var.get())
+                self.assertIn("已读取 2 个 Excel 文件", app.status_var.get())
+                self.assertIn("发现 2 个可处理的 .xls 文件", app.log_text.get("1.0", "end"))
+                self.assertEqual("normal", str(app.start_button.cget("state")))
+                self.assertFalse(list(folder.glob("合并结果_*.xls")))
+
+                with patch("app.threading.Thread") as worker:
+                    app._start_merge()
+                self.assertEqual([first, second], worker.call_args.kwargs["args"][0])
+            finally:
+                root.destroy()
+
+    def test_open_output_selects_the_generated_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "合并结果_20261010_100000.xls"
+            output.write_bytes(b"sample")
+            root = TkinterDnD.Tk()
+            root.withdraw()
+            try:
+                app = MergeApp(root)
+                root.after = Mock()
+                app.events.put(("done", MergeResult(output, 1, 1, 0, 1)))
+                app._poll_events()
+                self.assertEqual("normal", str(app.open_button.cget("state")))
+                with patch("app.subprocess.Popen") as launch:
+                    app._open_output()
+                launch.assert_called_once_with(["explorer.exe", "/select,", str(output)])
+            finally:
+                root.destroy()
+
     def test_selecting_folder_only_scans_until_start_is_clicked(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)

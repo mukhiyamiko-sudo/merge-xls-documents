@@ -13,10 +13,10 @@ import tkinter as tk
 
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
-from merger import MergeCancelled, discover_files, merge_files
+from merger import MergeCancelled, discover_files, is_generated_output, merge_files
 
 
-APP_NAME = "合并文档 V3"
+APP_NAME = "合并文档 V4"
 BG = "#F3F7FA"
 CARD = "#FFFFFF"
 INK = "#163247"
@@ -30,6 +30,7 @@ class MergeApp:
     def __init__(self, root: TkinterDnD.Tk) -> None:
         self.root = root
         self.folder: Path | None = None
+        self.dropped_files: list[Path] | None = None
         self.output_path: Path | None = None
         self.cancel_event = threading.Event()
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
@@ -72,7 +73,7 @@ class MergeApp:
         ttk.Label(shell, text=APP_NAME, style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             shell,
-            text="拖入或选择文件夹，读取清单后点击“开始合并”",
+            text="拖入多个 .xls 文件，或选择文件夹；读取清单后点击“开始合并”",
             style="Sub.TLabel",
         ).pack(anchor="w", pady=(2, 16))
 
@@ -163,7 +164,7 @@ class MergeApp:
         self.drop.create_text(
             width / 2,
             45,
-            text="把文件夹拖到这里",
+            text="把多个 .xls 文件拖到这里",
             fill=INK,
             font=("Microsoft YaHei UI", 15, "bold"),
         )
@@ -199,23 +200,42 @@ class MergeApp:
             paths = self.root.tk.splitlist(event.data)
         except tk.TclError:
             paths = [event.data]
-        if len(paths) != 1:
-            messagebox.showwarning(APP_NAME, "请一次只拖入一个文件夹。")
+        dropped = [Path(path) for path in paths]
+        if len(dropped) == 1 and dropped[0].is_dir():
+            self._set_folder(dropped[0])
             return
-        folder = Path(paths[0])
-        if not folder.is_dir():
-            messagebox.showwarning(APP_NAME, "拖入的内容不是文件夹。")
+        if not dropped or not all(path.is_file() for path in dropped):
+            messagebox.showwarning(APP_NAME, "请拖入一个文件夹，或同一文件夹中的多个 .xls 文件。")
             return
-        self._set_folder(folder)
+        eligible = [path for path in dropped if path.suffix.lower() == ".xls" and not path.name.startswith("~$")]
+        if not eligible:
+            messagebox.showwarning(APP_NAME, "拖入的文件中没有 .xls 文件。")
+            return
+        if len({path.parent for path in eligible}) != 1:
+            messagebox.showwarning(APP_NAME, "请拖入同一文件夹中的 .xls 文件。")
+            return
+        files = sorted(set(eligible), key=lambda path: path.name.casefold())
+        self._set_folder(files[0].parent, selected_files=files)
+        if len(dropped) > len(eligible):
+            self._log(f"已忽略 {len(dropped) - len(eligible)} 个非 .xls 或临时文件")
 
-    def _set_folder(self, folder: Path) -> None:
+    def _current_files(self) -> tuple[list[Path], list[Path]]:
+        assert self.folder is not None
+        if self.dropped_files is None:
+            return discover_files(self.folder)
+        sources = [path for path in self.dropped_files if not is_generated_output(path)]
+        generated = [path for path in self.dropped_files if is_generated_output(path)]
+        return sources, generated
+
+    def _set_folder(self, folder: Path, *, selected_files: list[Path] | None = None) -> None:
         self.folder = folder
+        self.dropped_files = selected_files
         self.output_path = None
-        self.folder_var.set(str(folder))
+        self.folder_var.set(str(folder) if selected_files is None else f"已拖入 {len(selected_files)} 个 .xls 文件：{folder}")
         self.open_button.configure(state="disabled")
-        self._log(f"已选择：{folder}")
+        self._log(f"已选择：{folder}" if selected_files is None else f"已拖入：{len(selected_files)} 个 .xls 文件（{folder}）")
         try:
-            files, old_outputs = discover_files(folder)
+            files, old_outputs = self._current_files()
         except Exception as exc:
             self.status_var.set("读取文件夹失败")
             self.count_var.set("0 / 0")
@@ -242,7 +262,7 @@ class MergeApp:
         if self.busy or self.folder is None:
             return
         try:
-            files, old_outputs = discover_files(self.folder)
+            files, old_outputs = self._current_files()
         except Exception as exc:
             messagebox.showerror(APP_NAME, str(exc))
             return
@@ -258,7 +278,7 @@ class MergeApp:
                 self._log("用户取消：检测到历史合并结果")
                 return
         if not files:
-            messagebox.showwarning(APP_NAME, "该文件夹第一层没有可处理的 .xls 文件。")
+            messagebox.showwarning(APP_NAME, "没有可处理的 .xls 文件。")
             return
 
         self.busy = True
